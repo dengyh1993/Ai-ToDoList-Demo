@@ -4,9 +4,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Todo, supabase } from '@/lib/supabase'
 import { User } from '@supabase/supabase-js'
-import UserMenu from '@/components/UserMenu'
-import DateFilter, { DateFilterType } from '@/components/DateFilter'
-import { getDateRange } from '@/lib/date-utils'
+import UserMenu from '@/app/components/UserMenu'
+import DateFilter from '@/app/components/DateFilter'
+import { DateFilterType, DateRange, getDateRange } from '@/lib/dateUtils'
 
 export default function Home() {
   const router = useRouter()
@@ -16,7 +16,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true)
   const [isAiLoading, setIsAiLoading] = useState(false)
   const [isAiMode, setIsAiMode] = useState(false)
-  const [dateFilter, setDateFilter] = useState<DateFilterType>('all')
+  const [dateFilter, setDateFilter] = useState<{ type: DateFilterType; customRange?: DateRange }>({ type: 'all' })
 
   // 检查登录状态
   useEffect(() => {
@@ -32,12 +32,17 @@ export default function Home() {
   }, [router])
 
   // 获取所有待办事项
-  const fetchTodos = useCallback(async (filter: DateFilterType = 'all') => {
+  const fetchTodos = useCallback(async (filter: { type: DateFilterType; customRange?: DateRange } = { type: 'all' }) => {
     try {
-      const dateRange = getDateRange(filter)
       const params = new URLSearchParams()
-      if (dateRange.start) params.set('start', dateRange.start)
-      if (dateRange.end) params.set('end', dateRange.end)
+      if (filter.type === 'custom' && filter.customRange) {
+        params.set('start', filter.customRange.start)
+        params.set('end', filter.customRange.end)
+      } else {
+        const dateRange = getDateRange(filter.type)
+        if (dateRange?.start) params.set('start', dateRange.start)
+        if (dateRange?.end) params.set('end', dateRange.end)
+      }
 
       const url = `/api/todos${params.toString() ? `?${params.toString()}` : ''}`
       const res = await fetch(url)
@@ -57,7 +62,7 @@ export default function Home() {
   }, [user, dateFilter, fetchTodos])
 
   // 处理日期筛选变化
-  const handleDateFilterChange = (filter: DateFilterType) => {
+  const handleDateFilterChange = (filter: { type: DateFilterType; customRange?: DateRange }) => {
     setDateFilter(filter)
   }
 
