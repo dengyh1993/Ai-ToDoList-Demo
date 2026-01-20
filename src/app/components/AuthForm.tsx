@@ -21,17 +21,64 @@ export default function AuthForm({ mode }: AuthFormProps) {
 
     try {
       if (mode === 'login') {
-        const { error } = await supabase.auth.signInWithPassword({
+        // 先尝试登录
+        const { error: loginError } = await supabase.auth.signInWithPassword({
           email,
           password,
         })
-        if (error) throw error
+
+        // 如果登录失败（用户不存在），自动注册
+        if (loginError) {
+          // 尝试注册（使用 emailRedirectTo 跳过邮箱验证的等待）
+          const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+              // 禁用邮箱验证重定向，直接获取 session
+              emailRedirectTo: undefined,
+            }
+          })
+
+          if (signUpError) throw signUpError
+
+          // 如果注册后直接返回了 session，说明不需要邮箱验证
+          if (signUpData.session) {
+            window.location.href = '/'
+            return
+          }
+
+          // 如果需要邮箱验证但用户信息已创建，尝试直接登录
+          // （适用于 Supabase 禁用邮箱验证的情况）
+          if (signUpData.user) {
+            const { error: retryLoginError } = await supabase.auth.signInWithPassword({
+              email,
+              password,
+            })
+
+            // 如果还是需要邮箱验证，给用户友好提示
+            if (retryLoginError) {
+              if (retryLoginError.message.includes('Email not confirmed')) {
+                throw new Error('账号已创建！请先查收验证邮件，点击链接后再登录。')
+              }
+              throw retryLoginError
+            }
+          }
+        }
       } else {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
         })
         if (error) throw error
+
+        // 如果注册后有 session，直接跳转
+        if (data.session) {
+          window.location.href = '/'
+          return
+        }
+
+        // 否则提示用户验证邮箱
+        throw new Error('注册成功！请查收验证邮件，点击链接后再登录。')
       }
       window.location.href = '/'
     } catch (err) {
@@ -72,7 +119,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:outline-none transition-colors"
+            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:outline-none transition-colors text-gray-900 placeholder:text-gray-400"
             placeholder="your@email.com"
             required
           />
@@ -86,7 +133,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:outline-none transition-colors"
+            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:outline-none transition-colors text-gray-900 placeholder:text-gray-400"
             placeholder="••••••••"
             required
             minLength={6}

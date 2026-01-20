@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 
 export async function GET(request: NextRequest) {
+  const supabase = createServerSupabaseClient()
+
   // 获取查询参数
   const searchParams = request.nextUrl.searchParams
   const start = searchParams.get('start')
@@ -31,11 +33,16 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const supabase = createServerSupabaseClient()
   const body = await request.json()
   const { title, description, parent_id } = body
 
   // 获取当前用户
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+  if (authError || !user) {
+    return NextResponse.json({ error: '请先登录' }, { status: 401 })
+  }
 
   const { data, error } = await supabase
     .from('todos')
@@ -43,7 +50,7 @@ export async function POST(request: NextRequest) {
       title,
       description,
       parent_id,
-      user_id: user?.id,
+      user_id: user.id,
     })
     .select()
     .single()

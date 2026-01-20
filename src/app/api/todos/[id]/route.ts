@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 
 // 获取单个待办事项
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const supabase = createServerSupabaseClient()
+
   const { data, error } = await supabase
     .from('todos')
     .select('*')
@@ -24,8 +26,15 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const supabase = createServerSupabaseClient()
   const body = await request.json()
   const { title, description, status } = body
+
+  // 验证用户已登录
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError || !user) {
+    return NextResponse.json({ error: '请先登录' }, { status: 401 })
+  }
 
   const updateData: Record<string, unknown> = {}
   if (title !== undefined) updateData.title = title
@@ -51,6 +60,14 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const supabase = createServerSupabaseClient()
+
+  // 验证用户已登录
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError || !user) {
+    return NextResponse.json({ error: '请先登录' }, { status: 401 })
+  }
+
   // 先删除子任务
   await supabase.from('todos').delete().eq('parent_id', params.id)
 
