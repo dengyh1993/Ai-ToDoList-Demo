@@ -1,19 +1,54 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Todo } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
+import { Todo, supabase } from '@/lib/supabase'
+import { User } from '@supabase/supabase-js'
+import UserMenu from '@/app/components/UserMenu'
+import DateFilter from '@/app/components/DateFilter'
+import { DateFilterType, DateRange, getDateRange } from '@/lib/dateUtils'
 
 export default function Home() {
+  const router = useRouter()
+  const [user, setUser] = useState<User | null>(null)
   const [todos, setTodos] = useState<Todo[]>([])
   const [newTask, setNewTask] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isAiLoading, setIsAiLoading] = useState(false)
+  const [isAddingTask, setIsAddingTask] = useState(false)
+  const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set())
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set())
   const [isAiMode, setIsAiMode] = useState(false)
+  const [dateFilter, setDateFilter] = useState<{ type: DateFilterType; customRange?: DateRange }>({ type: 'all' })
+
+  // 检查登录状态
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        router.push('/login')
+        return
+      }
+      setUser(user)
+    }
+    checkUser()
+  }, [router])
 
   // 获取所有待办事项
-  const fetchTodos = useCallback(async () => {
+  const fetchTodos = useCallback(async (filter: { type: DateFilterType; customRange?: DateRange } = { type: 'all' }) => {
     try {
-      const res = await fetch('/api/todos')
+      const params = new URLSearchParams()
+      if (filter.type === 'custom' && filter.customRange) {
+        params.set('start', filter.customRange.start)
+        params.set('end', filter.customRange.end)
+      } else {
+        const dateRange = getDateRange(filter.type)
+        if (dateRange?.start) params.set('start', dateRange.start)
+        if (dateRange?.end) params.set('end', dateRange.end)
+      }
+
+      const url = `/api/todos${params.toString() ? `?${params.toString()}` : ''}`
+      const res = await fetch(url)
       const data = await res.json()
       setTodos(data)
     } catch (error) {
@@ -24,13 +59,21 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
-    fetchTodos()
-  }, [fetchTodos])
+    if (user) {
+      fetchTodos(dateFilter)
+    }
+  }, [user, dateFilter, fetchTodos])
+
+  // 处理日期筛选变化
+  const handleDateFilterChange = (filter: { type: DateFilterType; customRange?: DateRange }) => {
+    setDateFilter(filter)
+  }
 
   // 添加普通任务
   const addTask = async () => {
     if (!newTask.trim()) return
 
+    setIsAddingTask(true)
     try {
       const res = await fetch('/api/todos', {
         method: 'POST',
@@ -39,10 +82,12 @@ export default function Home() {
       })
       if (res.ok) {
         setNewTask('')
-        fetchTodos()
+        fetchTodos(dateFilter)
       }
     } catch (error) {
       console.error('添加任务失败:', error)
+    } finally {
+      setIsAddingTask(false)
     }
   }
 
@@ -59,7 +104,7 @@ export default function Home() {
       })
       if (res.ok) {
         setNewTask('')
-        fetchTodos()
+        fetchTodos(dateFilter)
       } else {
         const data = await res.json()
         alert(data.error || 'AI 拆解失败')
@@ -74,25 +119,39 @@ export default function Home() {
 
   // 切换完成状态
   const toggleComplete = async (id: string, status: 'pending' | 'completed') => {
+    setTogglingIds(prev => new Set(prev).add(id))
     try {
       await fetch(`/api/todos/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: status === 'completed' ? 'pending' : 'completed' }),
       })
-      fetchTodos()
+      fetchTodos(dateFilter)
     } catch (error) {
       console.error('更新任务失败:', error)
+    } finally {
+      setTogglingIds(prev => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
     }
   }
 
   // 删除任务
   const deleteTask = async (id: string) => {
+    setDeletingIds(prev => new Set(prev).add(id))
     try {
       await fetch(`/api/todos/${id}`, { method: 'DELETE' })
-      fetchTodos()
+      fetchTodos(dateFilter)
     } catch (error) {
       console.error('删除任务失败:', error)
+    } finally {
+      setDeletingIds(prev => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
     }
   }
 
@@ -120,8 +179,22 @@ export default function Home() {
     }
   }
 
+  // 如果还在检查登录状态，显示加载
+  if (!user) {
+    return (
+      <main className="min-h-screen bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-100 flex items-center justify-center">
+        <div className="animate-spin h-8 w-8 border-4 border-indigo-500 border-t-transparent rounded-full"></div>
+      </main>
+    )
+  }
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-100">
+      {/* 顶部用户菜单 */}
+      <div className="absolute top-4 right-4">
+        <UserMenu user={user} />
+      </div>
+
       <div className="max-w-2xl mx-auto px-4 py-12">
         {/* 标题 */}
         <div className="text-center mb-10">
@@ -154,11 +227,10 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => setIsAiMode(!isAiMode)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-                  isAiMode
-                    ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${isAiMode
+                  ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
               >
                 <svg
                   className="w-5 h-5"
@@ -178,10 +250,10 @@ export default function Home() {
 
               <button
                 type="submit"
-                disabled={!newTask.trim() || isAiLoading}
+                disabled={!newTask.trim() || isAiLoading || isAddingTask}
                 className="px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-medium rounded-xl hover:from-indigo-600 hover:to-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
               >
-                {isAiLoading ? (
+                {isAiLoading || isAddingTask ? (
                   <>
                     <svg
                       className="animate-spin h-5 w-5"
@@ -202,7 +274,7 @@ export default function Home() {
                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                       />
                     </svg>
-                    AI 处理中...
+                    {isAiLoading ? 'AI 处理中...' : '添加中...'}
                   </>
                 ) : isAiMode ? (
                   '智能拆解'
@@ -212,6 +284,11 @@ export default function Home() {
               </button>
             </div>
           </form>
+        </div>
+
+        {/* 日期筛选 */}
+        <div className="mb-6">
+          <DateFilter value={dateFilter} onChange={handleDateFilterChange} />
         </div>
 
         {/* 任务列表 */}
@@ -240,13 +317,18 @@ export default function Home() {
                   <div className="p-5 flex items-center gap-4">
                     <button
                       onClick={() => toggleComplete(todo.id, todo.status)}
-                      className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all ${
-                        todo.status === 'completed'
-                          ? 'bg-green-500 border-green-500 text-white'
-                          : 'border-gray-300 hover:border-indigo-500'
-                      }`}
+                      disabled={togglingIds.has(todo.id)}
+                      className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all ${todo.status === 'completed'
+                        ? 'bg-green-500 border-green-500 text-white'
+                        : 'border-gray-300 hover:border-indigo-500'
+                        } ${togglingIds.has(todo.id) ? 'opacity-50' : ''}`}
                     >
-                      {todo.status === 'completed' && (
+                      {togglingIds.has(todo.id) ? (
+                        <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      ) : todo.status === 'completed' && (
                         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                           <path
                             fillRule="evenodd"
@@ -259,11 +341,10 @@ export default function Home() {
 
                     <div className="flex-1">
                       <p
-                        className={`text-lg ${
-                          todo.status === 'completed'
-                            ? 'text-gray-400 line-through'
-                            : 'text-gray-800'
-                        }`}
+                        className={`text-lg ${todo.status === 'completed'
+                          ? 'text-gray-400 line-through'
+                          : 'text-gray-800'
+                          }`}
                       >
                         {todo.title}
                       </p>
@@ -279,16 +360,24 @@ export default function Home() {
 
                     <button
                       onClick={() => deleteTask(todo.id)}
-                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                      disabled={deletingIds.has(todo.id)}
+                      className={`p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all ${deletingIds.has(todo.id) ? 'opacity-50' : ''}`}
                     >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                        />
-                      </svg>
+                      {deletingIds.has(todo.id) ? (
+                        <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      ) : (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                          />
+                        </svg>
+                      )}
                     </button>
                   </div>
 
@@ -305,13 +394,18 @@ export default function Home() {
                               onClick={() =>
                                 toggleComplete(subTask.id, subTask.status)
                               }
-                              className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
-                                subTask.status === 'completed'
-                                  ? 'bg-green-500 border-green-500 text-white'
-                                  : 'border-gray-300 hover:border-indigo-500'
-                              }`}
+                              disabled={togglingIds.has(subTask.id)}
+                              className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${subTask.status === 'completed'
+                                ? 'bg-green-500 border-green-500 text-white'
+                                : 'border-gray-300 hover:border-indigo-500'
+                                } ${togglingIds.has(subTask.id) ? 'opacity-50' : ''}`}
                             >
-                              {subTask.status === 'completed' && (
+                              {togglingIds.has(subTask.id) ? (
+                                <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                </svg>
+                              ) : subTask.status === 'completed' && (
                                 <svg
                                   className="w-3 h-3"
                                   fill="currentColor"
@@ -326,31 +420,38 @@ export default function Home() {
                               )}
                             </button>
                             <span
-                              className={`flex-1 ${
-                                subTask.status === 'completed'
-                                  ? 'text-gray-400 line-through'
-                                  : 'text-gray-600'
-                              }`}
+                              className={`flex-1 ${subTask.status === 'completed'
+                                ? 'text-gray-400 line-through'
+                                : 'text-gray-600'
+                                }`}
                             >
                               {subTask.title}
                             </span>
                             <button
                               onClick={() => deleteTask(subTask.id)}
-                              className="p-1 text-gray-300 hover:text-red-500 transition-colors"
+                              disabled={deletingIds.has(subTask.id)}
+                              className={`p-1 text-gray-300 hover:text-red-500 transition-colors ${deletingIds.has(subTask.id) ? 'opacity-50' : ''}`}
                             >
-                              <svg
-                                className="w-4 h-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M6 18L18 6M6 6l12 12"
-                                />
-                              </svg>
+                              {deletingIds.has(subTask.id) ? (
+                                <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                </svg>
+                              ) : (
+                                <svg
+                                  className="w-4 h-4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M6 18L18 6M6 6l12 12"
+                                  />
+                                </svg>
+                              )}
                             </button>
                           </div>
                         ))}

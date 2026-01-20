@@ -1,15 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { decomposeTask } from '@/lib/openai'
-import { supabase } from '@/lib/supabase'
+import { createServerSupabaseClient } from '@/lib/supabase-server'
 
 // AI 拆解任务
 export async function POST(request: NextRequest) {
   try {
+    const supabase = createServerSupabaseClient()
     const body = await request.json()
     const { task } = body
 
     if (!task) {
       return NextResponse.json({ error: '任务不能为空' }, { status: 400 })
+    }
+
+    // 获取当前用户
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json({ error: '请先登录' }, { status: 401 })
     }
 
     // 使用 AI 拆解任务
@@ -22,7 +30,13 @@ export async function POST(request: NextRequest) {
     // 创建主任务
     const { data: mainTask, error: mainError } = await supabase
       .from('todos')
-      .insert([{ title: task, description: null, status: 'pending', parent_id: null }])
+      .insert([{
+        title: task,
+        description: null,
+        status: 'pending',
+        parent_id: null,
+        user_id: user.id,
+      }])
       .select()
       .single()
 
@@ -37,6 +51,7 @@ export async function POST(request: NextRequest) {
       description: null,
       status: 'pending',
       parent_id: mainTask.id,
+      user_id: user.id,
       created_at: new Date(now + index * 1000).toISOString(), // 确保子任务有明确的顺序
     }))
 
