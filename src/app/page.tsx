@@ -1,19 +1,46 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Todo } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
+import { Todo, supabase } from '@/lib/supabase'
+import { User } from '@supabase/supabase-js'
+import UserMenu from '@/components/UserMenu'
+import DateFilter, { DateFilterType } from '@/components/DateFilter'
+import { getDateRange } from '@/lib/date-utils'
 
 export default function Home() {
+  const router = useRouter()
+  const [user, setUser] = useState<User | null>(null)
   const [todos, setTodos] = useState<Todo[]>([])
   const [newTask, setNewTask] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isAiLoading, setIsAiLoading] = useState(false)
   const [isAiMode, setIsAiMode] = useState(false)
+  const [dateFilter, setDateFilter] = useState<DateFilterType>('all')
+
+  // 检查登录状态
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        router.push('/login')
+        return
+      }
+      setUser(user)
+    }
+    checkUser()
+  }, [router])
 
   // 获取所有待办事项
-  const fetchTodos = useCallback(async () => {
+  const fetchTodos = useCallback(async (filter: DateFilterType = 'all') => {
     try {
-      const res = await fetch('/api/todos')
+      const dateRange = getDateRange(filter)
+      const params = new URLSearchParams()
+      if (dateRange.start) params.set('start', dateRange.start)
+      if (dateRange.end) params.set('end', dateRange.end)
+
+      const url = `/api/todos${params.toString() ? `?${params.toString()}` : ''}`
+      const res = await fetch(url)
       const data = await res.json()
       setTodos(data)
     } catch (error) {
@@ -24,8 +51,15 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
-    fetchTodos()
-  }, [fetchTodos])
+    if (user) {
+      fetchTodos(dateFilter)
+    }
+  }, [user, dateFilter, fetchTodos])
+
+  // 处理日期筛选变化
+  const handleDateFilterChange = (filter: DateFilterType) => {
+    setDateFilter(filter)
+  }
 
   // 添加普通任务
   const addTask = async () => {
@@ -39,7 +73,7 @@ export default function Home() {
       })
       if (res.ok) {
         setNewTask('')
-        fetchTodos()
+        fetchTodos(dateFilter)
       }
     } catch (error) {
       console.error('添加任务失败:', error)
@@ -59,7 +93,7 @@ export default function Home() {
       })
       if (res.ok) {
         setNewTask('')
-        fetchTodos()
+        fetchTodos(dateFilter)
       } else {
         const data = await res.json()
         alert(data.error || 'AI 拆解失败')
@@ -80,7 +114,7 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: status === 'completed' ? 'pending' : 'completed' }),
       })
-      fetchTodos()
+      fetchTodos(dateFilter)
     } catch (error) {
       console.error('更新任务失败:', error)
     }
@@ -90,7 +124,7 @@ export default function Home() {
   const deleteTask = async (id: string) => {
     try {
       await fetch(`/api/todos/${id}`, { method: 'DELETE' })
-      fetchTodos()
+      fetchTodos(dateFilter)
     } catch (error) {
       console.error('删除任务失败:', error)
     }
@@ -120,8 +154,22 @@ export default function Home() {
     }
   }
 
+  // 如果还在检查登录状态，显示加载
+  if (!user) {
+    return (
+      <main className="min-h-screen bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-100 flex items-center justify-center">
+        <div className="animate-spin h-8 w-8 border-4 border-indigo-500 border-t-transparent rounded-full"></div>
+      </main>
+    )
+  }
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-100">
+      {/* 顶部用户菜单 */}
+      <div className="absolute top-4 right-4">
+        <UserMenu user={user} />
+      </div>
+
       <div className="max-w-2xl mx-auto px-4 py-12">
         {/* 标题 */}
         <div className="text-center mb-10">
@@ -212,6 +260,11 @@ export default function Home() {
               </button>
             </div>
           </form>
+        </div>
+
+        {/* 日期筛选 */}
+        <div className="mb-6">
+          <DateFilter value={dateFilter} onChange={handleDateFilterChange} />
         </div>
 
         {/* 任务列表 */}
