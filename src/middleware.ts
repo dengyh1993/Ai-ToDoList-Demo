@@ -31,9 +31,7 @@ export async function middleware(request: NextRequest) {
     )
 
     // 刷新 session，这会更新过期的 tokens
-    const {
-        data: { user },
-    } = await supabase.auth.getUser()
+    await supabase.auth.getUser()
 
     // 如果用户未登录且访问的是受保护的 API 路由（除了 GET 请求）
     // 这里不做重定向，让 API 返回 401

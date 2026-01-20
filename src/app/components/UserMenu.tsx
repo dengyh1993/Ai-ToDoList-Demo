@@ -2,6 +2,7 @@
 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
 import { supabase, User } from '@/lib/supabase'
 
 interface UserMenuProps {
@@ -26,7 +27,7 @@ export default function UserMenu({ user }: UserMenuProps) {
         className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/50 transition-colors"
       >
         {avatarUrl ? (
-          <img src={avatarUrl} alt="头像" className="w-8 h-8 rounded-full" />
+          <Image src={avatarUrl} alt="头像" width={32} height={32} className="w-8 h-8 rounded-full" />
         ) : (
           <div className="w-8 h-8 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-white text-sm font-medium">
             {displayName.charAt(0).toUpperCase()}
