@@ -20,6 +20,11 @@ export default function Home() {
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set())
   const [isAiMode, setIsAiMode] = useState(false)
   const [dateFilter, setDateFilter] = useState<{ type: DateFilterType; customRange?: DateRange }>({ type: 'all' })
+  // 编辑状态
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingTitle, setEditingTitle] = useState('')
+  // 折叠状态
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set())
 
   // 检查登录状态
   useEffect(() => {
@@ -153,6 +158,54 @@ export default function Home() {
         return next
       })
     }
+  }
+
+  // 更新任务标题
+  const updateTask = async (id: string, title: string) => {
+    try {
+      await fetch(`/api/todos/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      })
+      fetchTodos(dateFilter)
+    } catch (error) {
+      console.error('更新任务失败:', error)
+    }
+  }
+
+  // 开始编辑
+  const startEdit = (id: string, title: string) => {
+    setEditingId(id)
+    setEditingTitle(title)
+  }
+
+  // 保存编辑
+  const saveEdit = async () => {
+    if (editingId && editingTitle.trim()) {
+      await updateTask(editingId, editingTitle.trim())
+    }
+    setEditingId(null)
+    setEditingTitle('')
+  }
+
+  // 取消编辑
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditingTitle('')
+  }
+
+  // 切换折叠状态
+  const toggleCollapse = (id: string) => {
+    setCollapsedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
   }
 
   // 获取主任务（没有 parent_id 的）
@@ -324,7 +377,7 @@ export default function Home() {
                         } ${togglingIds.has(todo.id) ? 'opacity-50' : ''}`}
                     >
                       {togglingIds.has(todo.id) ? (
-                        <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24">
+                        <svg className="animate-spin w-4 h-4 text-indigo-600" viewBox="0 0 24 24">
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                         </svg>
@@ -340,21 +393,66 @@ export default function Home() {
                     </button>
 
                     <div className="flex-1">
-                      <p
-                        className={`text-lg ${todo.status === 'completed'
-                          ? 'text-gray-400 line-through'
-                          : 'text-gray-800'
-                          }`}
-                      >
-                        {todo.title}
-                      </p>
+                      {editingId === todo.id ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={editingTitle}
+                            onChange={(e) => setEditingTitle(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') saveEdit()
+                              if (e.key === 'Escape') cancelEdit()
+                            }}
+                            className="flex-1 px-3 py-1 text-lg border-2 border-indigo-500 rounded-lg focus:outline-none"
+                            autoFocus
+                          />
+                          <button
+                            onClick={saveEdit}
+                            className="p-1 text-green-500 hover:bg-green-50 rounded"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={cancelEdit}
+                            className="p-1 text-gray-400 hover:bg-gray-100 rounded"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      ) : (
+                        <p
+                          onDoubleClick={() => startEdit(todo.id, todo.title)}
+                          className={`text-lg cursor-pointer hover:bg-gray-50 px-2 py-1 -mx-2 rounded transition-colors ${todo.status === 'completed'
+                            ? 'text-gray-400 line-through'
+                            : 'text-gray-800'
+                            }`}
+                          title="双击编辑"
+                        >
+                          {todo.title}
+                        </p>
+                      )}
                       {todo.description && (
                         <p className="text-sm text-gray-500 mt-1">{todo.description}</p>
                       )}
                       {subTasks.length > 0 && (
-                        <p className="text-sm text-gray-400 mt-1">
+                        <button
+                          onClick={() => toggleCollapse(todo.id)}
+                          className="text-sm text-indigo-500 hover:text-indigo-700 mt-1 flex items-center gap-1"
+                        >
+                          <svg
+                            className={`w-4 h-4 transition-transform ${collapsedIds.has(todo.id) ? '' : 'rotate-90'}`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
                           {completedSubTasks}/{subTasks.length} 个子任务已完成
-                        </p>
+                        </button>
                       )}
                     </div>
 
@@ -364,7 +462,7 @@ export default function Home() {
                       className={`p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all ${deletingIds.has(todo.id) ? 'opacity-50' : ''}`}
                     >
                       {deletingIds.has(todo.id) ? (
-                        <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24">
+                        <svg className="animate-spin w-5 h-5 text-red-500" viewBox="0 0 24 24">
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                         </svg>
@@ -382,7 +480,7 @@ export default function Home() {
                   </div>
 
                   {/* 子任务列表 */}
-                  {subTasks.length > 0 && (
+                  {subTasks.length > 0 && !collapsedIds.has(todo.id) && (
                     <div className="border-t border-gray-100 bg-gray-50 px-5 py-3">
                       <div className="space-y-2">
                         {subTasks.map((subTask) => (
@@ -401,7 +499,7 @@ export default function Home() {
                                 } ${togglingIds.has(subTask.id) ? 'opacity-50' : ''}`}
                             >
                               {togglingIds.has(subTask.id) ? (
-                                <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24">
+                                <svg className="animate-spin w-3 h-3 text-indigo-600" viewBox="0 0 24 24">
                                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                                 </svg>
@@ -419,21 +517,55 @@ export default function Home() {
                                 </svg>
                               )}
                             </button>
-                            <span
-                              className={`flex-1 ${subTask.status === 'completed'
-                                ? 'text-gray-400 line-through'
-                                : 'text-gray-600'
-                                }`}
-                            >
-                              {subTask.title}
-                            </span>
+                            {editingId === subTask.id ? (
+                              <div className="flex-1 flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  value={editingTitle}
+                                  onChange={(e) => setEditingTitle(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') saveEdit()
+                                    if (e.key === 'Escape') cancelEdit()
+                                  }}
+                                  className="flex-1 px-2 py-1 border-2 border-indigo-500 rounded focus:outline-none text-sm"
+                                  autoFocus
+                                />
+                                <button
+                                  onClick={saveEdit}
+                                  className="p-1 text-green-500 hover:bg-green-50 rounded"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                </button>
+                                <button
+                                  onClick={cancelEdit}
+                                  className="p-1 text-gray-400 hover:bg-gray-100 rounded"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </button>
+                              </div>
+                            ) : (
+                              <span
+                                onDoubleClick={() => startEdit(subTask.id, subTask.title)}
+                                className={`flex-1 cursor-pointer hover:bg-gray-100 px-2 py-1 -mx-2 rounded transition-colors ${subTask.status === 'completed'
+                                  ? 'text-gray-400 line-through'
+                                  : 'text-gray-600'
+                                  }`}
+                                title="双击编辑"
+                              >
+                                {subTask.title}
+                              </span>
+                            )}
                             <button
                               onClick={() => deleteTask(subTask.id)}
                               disabled={deletingIds.has(subTask.id)}
                               className={`p-1 text-gray-300 hover:text-red-500 transition-colors ${deletingIds.has(subTask.id) ? 'opacity-50' : ''}`}
                             >
                               {deletingIds.has(subTask.id) ? (
-                                <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24">
+                                <svg className="animate-spin w-4 h-4 text-red-500" viewBox="0 0 24 24">
                                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                                 </svg>
