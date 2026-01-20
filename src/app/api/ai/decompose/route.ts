@@ -12,6 +12,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '任务不能为空' }, { status: 400 })
     }
 
+    // 获取当前用户
+    const { data: { user } } = await supabase.auth.getUser()
+
     // 使用 AI 拆解任务
     const steps = await decomposeTask(task)
 
@@ -22,7 +25,13 @@ export async function POST(request: NextRequest) {
     // 创建主任务
     const { data: mainTask, error: mainError } = await supabase
       .from('todos')
-      .insert([{ title: task, description: null, status: 'pending', parent_id: null }])
+      .insert([{
+        title: task,
+        description: null,
+        status: 'pending',
+        parent_id: null,
+        user_id: user?.id,
+      }])
       .select()
       .single()
 
@@ -37,6 +46,7 @@ export async function POST(request: NextRequest) {
       description: null,
       status: 'pending',
       parent_id: mainTask.id,
+      user_id: user?.id,
       created_at: new Date(now + index * 1000).toISOString(), // 确保子任务有明确的顺序
     }))
 
