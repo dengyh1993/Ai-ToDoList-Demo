@@ -1,101 +1,368 @@
-import Image from "next/image";
+'use client'
+
+import { useState, useEffect, useCallback } from 'react'
+import { Todo } from '@/lib/supabase'
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [todos, setTodos] = useState<Todo[]>([])
+  const [newTask, setNewTask] = useState('')
+  const [isLoading, setIsLoading] = useState(true)
+  const [isAiLoading, setIsAiLoading] = useState(false)
+  const [isAiMode, setIsAiMode] = useState(false)
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  // 获取所有待办事项
+  const fetchTodos = useCallback(async () => {
+    try {
+      const res = await fetch('/api/todos')
+      const data = await res.json()
+      setTodos(data)
+    } catch (error) {
+      console.error('获取待办事项失败:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchTodos()
+  }, [fetchTodos])
+
+  // 添加普通任务
+  const addTask = async () => {
+    if (!newTask.trim()) return
+
+    try {
+      const res = await fetch('/api/todos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newTask }),
+      })
+      if (res.ok) {
+        setNewTask('')
+        fetchTodos()
+      }
+    } catch (error) {
+      console.error('添加任务失败:', error)
+    }
+  }
+
+  // AI 拆解任务
+  const aiDecompose = async () => {
+    if (!newTask.trim()) return
+
+    setIsAiLoading(true)
+    try {
+      const res = await fetch('/api/ai/decompose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task: newTask }),
+      })
+      if (res.ok) {
+        setNewTask('')
+        fetchTodos()
+      } else {
+        const data = await res.json()
+        alert(data.error || 'AI 拆解失败')
+      }
+    } catch (error) {
+      console.error('AI 拆解失败:', error)
+      alert('AI 服务暂时不可用')
+    } finally {
+      setIsAiLoading(false)
+    }
+  }
+
+  // 切换完成状态
+  const toggleComplete = async (id: string, status: 'pending' | 'completed') => {
+    try {
+      await fetch(`/api/todos/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: status === 'completed' ? 'pending' : 'completed' }),
+      })
+      fetchTodos()
+    } catch (error) {
+      console.error('更新任务失败:', error)
+    }
+  }
+
+  // 删除任务
+  const deleteTask = async (id: string) => {
+    try {
+      await fetch(`/api/todos/${id}`, { method: 'DELETE' })
+      fetchTodos()
+    } catch (error) {
+      console.error('删除任务失败:', error)
+    }
+  }
+
+  // 获取主任务（没有 parent_id 的）
+  const mainTodos = todos.filter((todo) => !todo.parent_id)
+
+  // 获取子任务
+  const getSubTasks = (parentId: string) =>
+    todos
+      .filter((todo) => todo.parent_id === parentId)
+      .sort((a, b) => {
+        const timeDiff =
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        if (timeDiff !== 0) return timeDiff
+        return a.id.localeCompare(b.id)
+      })
+
+  // 处理提交
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (isAiMode) {
+      aiDecompose()
+    } else {
+      addTask()
+    }
+  }
+
+  return (
+    <main className="min-h-screen bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-100">
+      <div className="max-w-2xl mx-auto px-4 py-12">
+        {/* 标题 */}
+        <div className="text-center mb-10">
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+            AI 待办事项
+          </h1>
+          <p className="text-gray-500 mt-2">智能拆解任务，让复杂变简单</p>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
-  );
+
+        {/* 输入区域 */}
+        <div className="bg-white rounded-2xl shadow-xl p-6 mb-8">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="relative">
+              <input
+                type="text"
+                value={newTask}
+                onChange={(e) => setNewTask(e.target.value)}
+                placeholder={
+                  isAiMode
+                    ? '输入一个宽泛任务，如"准备下周的产品发布"...'
+                    : '添加一个新任务...'
+                }
+                className="w-full px-5 py-4 text-lg text-gray-800 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:outline-none transition-colors"
+                disabled={isAiLoading}
+              />
+            </div>
+
+            {/* 模式切换和提交按钮 */}
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setIsAiMode(!isAiMode)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+                  isAiMode
+                    ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
+                </svg>
+                AI 拆解模式
+              </button>
+
+              <button
+                type="submit"
+                disabled={!newTask.trim() || isAiLoading}
+                className="px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-medium rounded-xl hover:from-indigo-600 hover:to-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+              >
+                {isAiLoading ? (
+                  <>
+                    <svg
+                      className="animate-spin h-5 w-5"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                        fill="none"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                    AI 处理中...
+                  </>
+                ) : isAiMode ? (
+                  '智能拆解'
+                ) : (
+                  '添加任务'
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* 任务列表 */}
+        <div className="space-y-4">
+          {isLoading ? (
+            <div className="text-center py-12">
+              <div className="animate-spin h-8 w-8 border-4 border-indigo-500 border-t-transparent rounded-full mx-auto"></div>
+              <p className="text-gray-500 mt-4">加载中...</p>
+            </div>
+          ) : mainTodos.length === 0 ? (
+            <div className="text-center py-12 bg-white rounded-2xl shadow-lg">
+              <div className="text-6xl mb-4">📝</div>
+              <p className="text-gray-500">还没有任务，开始添加吧！</p>
+            </div>
+          ) : (
+            mainTodos.map((todo) => {
+              const subTasks = getSubTasks(todo.id)
+              const completedSubTasks = subTasks.filter((t) => t.status === 'completed').length
+
+              return (
+                <div
+                  key={todo.id}
+                  className="bg-white rounded-2xl shadow-lg overflow-hidden"
+                >
+                  {/* 主任务 */}
+                  <div className="p-5 flex items-center gap-4">
+                    <button
+                      onClick={() => toggleComplete(todo.id, todo.status)}
+                      className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all ${
+                        todo.status === 'completed'
+                          ? 'bg-green-500 border-green-500 text-white'
+                          : 'border-gray-300 hover:border-indigo-500'
+                      }`}
+                    >
+                      {todo.status === 'completed' && (
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path
+                            fillRule="evenodd"
+                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      )}
+                    </button>
+
+                    <div className="flex-1">
+                      <p
+                        className={`text-lg ${
+                          todo.status === 'completed'
+                            ? 'text-gray-400 line-through'
+                            : 'text-gray-800'
+                        }`}
+                      >
+                        {todo.title}
+                      </p>
+                      {todo.description && (
+                        <p className="text-sm text-gray-500 mt-1">{todo.description}</p>
+                      )}
+                      {subTasks.length > 0 && (
+                        <p className="text-sm text-gray-400 mt-1">
+                          {completedSubTasks}/{subTasks.length} 个子任务已完成
+                        </p>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => deleteTask(todo.id)}
+                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* 子任务列表 */}
+                  {subTasks.length > 0 && (
+                    <div className="border-t border-gray-100 bg-gray-50 px-5 py-3">
+                      <div className="space-y-2">
+                        {subTasks.map((subTask) => (
+                          <div
+                            key={subTask.id}
+                            className="flex items-center gap-3 py-2 pl-4"
+                          >
+                            <button
+                              onClick={() =>
+                                toggleComplete(subTask.id, subTask.status)
+                              }
+                              className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                                subTask.status === 'completed'
+                                  ? 'bg-green-500 border-green-500 text-white'
+                                  : 'border-gray-300 hover:border-indigo-500'
+                              }`}
+                            >
+                              {subTask.status === 'completed' && (
+                                <svg
+                                  className="w-3 h-3"
+                                  fill="currentColor"
+                                  viewBox="0 0 20 20"
+                                >
+                                  <path
+                                    fillRule="evenodd"
+                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                    clipRule="evenodd"
+                                  />
+                                </svg>
+                              )}
+                            </button>
+                            <span
+                              className={`flex-1 ${
+                                subTask.status === 'completed'
+                                  ? 'text-gray-400 line-through'
+                                  : 'text-gray-600'
+                              }`}
+                            >
+                              {subTask.title}
+                            </span>
+                            <button
+                              onClick={() => deleteTask(subTask.id)}
+                              className="p-1 text-gray-300 hover:text-red-500 transition-colors"
+                            >
+                              <svg
+                                className="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M6 18L18 6M6 6l12 12"
+                                />
+                              </svg>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })
+          )}
+        </div>
+      </div>
+    </main>
+  )
 }
