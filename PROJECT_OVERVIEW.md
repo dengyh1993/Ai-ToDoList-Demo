@@ -188,6 +188,11 @@ npm run build
 npm start
 ```
 
+### Vercel 部署情况
+- 生产部署地址：https://todo-ai-eight-phi.vercel.app
+- 控制台检查：https://vercel.com/dengyhs-projects-54697182/todo-ai/B993Xe8T31DtPzvRMrty6jnGrH4k
+- 使用 `vercel --prod` 自动完成构建/部署，需在 Vercel 设置中添加好 `NEXT_PUBLIC_*` 和 `XIAOMI_API_KEY` 环境变量后再推送代码。
+
 ## 📊 性能优化
 
 ### 前端优化
