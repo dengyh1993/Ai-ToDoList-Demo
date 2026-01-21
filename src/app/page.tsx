@@ -33,6 +33,20 @@ export default function Home() {
     low: { label: '低', color: 'bg-green-100 text-green-700 border-green-200' },
   }
 
+  // 获取截止日期状态
+  const getDueDateStatus = (dueDate?: string) => {
+    if (!dueDate) return null
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const due = new Date(dueDate)
+    due.setHours(0, 0, 0, 0)
+    const diffDays = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    if (diffDays < 0) return { label: '已过期', color: 'text-red-600 bg-red-50' }
+    if (diffDays === 0) return { label: '今天到期', color: 'text-orange-600 bg-orange-50' }
+    if (diffDays <= 3) return { label: `${diffDays}天后`, color: 'text-yellow-600 bg-yellow-50' }
+    return { label: dueDate, color: 'text-gray-500 bg-gray-50' }
+  }
+
   // 检查登录状态
   useEffect(() => {
     const checkUser = async () => {
@@ -192,6 +206,20 @@ export default function Home() {
       fetchTodos(dateFilter)
     } catch (error) {
       console.error('更新优先级失败:', error)
+    }
+  }
+
+  // 更新截止日期
+  const updateDueDate = async (id: string, due_date: string | null) => {
+    try {
+      await fetch(`/api/todos/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ due_date }),
+      })
+      fetchTodos(dateFilter)
+    } catch (error) {
+      console.error('更新截止日期失败:', error)
     }
   }
 
@@ -457,7 +485,7 @@ export default function Home() {
                         </p>
                       )}
                       {/* 优先级标签 */}
-                      <div className="flex items-center gap-2 mt-1">
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <select
                           value={todo.priority || 'medium'}
                           onChange={(e) => updatePriority(todo.id, e.target.value as 'low' | 'medium' | 'high')}
@@ -467,6 +495,21 @@ export default function Home() {
                           <option value="medium">中优先级</option>
                           <option value="low">低优先级</option>
                         </select>
+                        {/* 截止日期 */}
+                        <input
+                          type="date"
+                          value={todo.due_date || ''}
+                          onChange={(e) => updateDueDate(todo.id, e.target.value || null)}
+                          className="text-xs px-2 py-1 border border-gray-200 rounded cursor-pointer hover:border-indigo-300"
+                        />
+                        {todo.due_date && (() => {
+                          const status = getDueDateStatus(todo.due_date)
+                          return status && (
+                            <span className={`text-xs px-2 py-0.5 rounded ${status.color}`}>
+                              {status.label}
+                            </span>
+                          )
+                        })()}
                       </div>
                       {todo.description && (
                         <p className="text-sm text-gray-500 mt-1">{todo.description}</p>

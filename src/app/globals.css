@@ -2,22 +2,51 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* 浅色主题（默认） */
+:root,
+[data-theme="light"] {
+  --bg-primary: #f3e8ff;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f9fafb;
+  --text-primary: #1f2937;
+  --text-secondary: #4b5563;
+  --text-muted: #9ca3af;
+  --border-color: #e5e7eb;
+  --accent-from: #6366f1;
+  --accent-to: #a855f7;
+  --card-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* 深色主题 */
+[data-theme="dark"] {
+  --bg-primary: #0f0a1a;
+  --bg-secondary: #1a1625;
+  --bg-tertiary: #2d2640;
+  --text-primary: #f3f4f6;
+  --text-secondary: #d1d5db;
+  --text-muted: #6b7280;
+  --border-color: #374151;
+  --accent-from: #818cf8;
+  --accent-to: #c084fc;
+  --card-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3);
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
+  background: linear-gradient(135deg, var(--bg-primary), var(--bg-secondary));
+  color: var(--text-primary);
   font-family: Arial, Helvetica, sans-serif;
+  min-height: 100vh;
+}
+
+/* 卡片样式 */
+.card {
+  background: var(--bg-secondary);
+  box-shadow: var(--card-shadow);
+}
+
+/* 深色模式过渡 */
+* {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
 }
 
 @layer utilities {

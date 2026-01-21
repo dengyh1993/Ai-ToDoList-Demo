@@ -13,6 +13,7 @@ export interface Todo {
   description?: string
   status: 'pending' | 'completed'
   priority?: 'low' | 'medium' | 'high'
+  due_date?: string
   parent_id?: string
   user_id?: string
   created_at: string

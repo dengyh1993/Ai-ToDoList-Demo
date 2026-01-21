@@ -28,7 +28,7 @@ export async function PATCH(
 ) {
   const supabase = createServerSupabaseClient()
   const body = await request.json()
-  const { title, description, status, priority } = body
+  const { title, description, status, priority, due_date } = body
 
   // 验证用户已登录
   const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -41,6 +41,7 @@ export async function PATCH(
   if (description !== undefined) updateData.description = description
   if (status !== undefined) updateData.status = status
   if (priority !== undefined) updateData.priority = priority
+  if (due_date !== undefined) updateData.due_date = due_date
 
   // 先获取当前任务信息，判断是否为主任务
   const { data: currentTodo, error: fetchError } = await supabase
