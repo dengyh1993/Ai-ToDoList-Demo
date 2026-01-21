@@ -25,6 +25,8 @@ export default function Home() {
   const [editingTitle, setEditingTitle] = useState('')
   // 折叠状态
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set())
+  // 更新中状态（优先级/截止日期）
+  const [updatingIds, setUpdatingIds] = useState<Set<string>>(new Set())
 
   // 优先级配置
   const priorityConfig = {
@@ -197,6 +199,7 @@ export default function Home() {
 
   // 更新任务优先级
   const updatePriority = async (id: string, priority: 'low' | 'medium' | 'high') => {
+    setUpdatingIds(prev => new Set(prev).add(id))
     try {
       await fetch(`/api/todos/${id}`, {
         method: 'PATCH',
@@ -206,11 +209,18 @@ export default function Home() {
       fetchTodos(dateFilter)
     } catch (error) {
       console.error('更新优先级失败:', error)
+    } finally {
+      setUpdatingIds(prev => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
     }
   }
 
   // 更新截止日期
   const updateDueDate = async (id: string, due_date: string | null) => {
+    setUpdatingIds(prev => new Set(prev).add(id))
     try {
       await fetch(`/api/todos/${id}`, {
         method: 'PATCH',
@@ -220,6 +230,12 @@ export default function Home() {
       fetchTodos(dateFilter)
     } catch (error) {
       console.error('更新截止日期失败:', error)
+    } finally {
+      setUpdatingIds(prev => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
     }
   }
 
@@ -284,14 +300,14 @@ export default function Home() {
   // 如果还在检查登录状态，显示加载
   if (!user) {
     return (
-      <main className="min-h-screen bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-100 flex items-center justify-center">
+      <main className="min-h-screen bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center">
         <div className="animate-spin h-8 w-8 border-4 border-indigo-500 border-t-transparent rounded-full"></div>
       </main>
     )
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-100">
+    <main className="min-h-screen bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
       {/* 顶部用户菜单 */}
       <div className="absolute top-4 right-4">
         <UserMenu user={user} />
@@ -303,11 +319,11 @@ export default function Home() {
           <h1 className="text-4xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
             AI 待办事项
           </h1>
-          <p className="text-gray-500 mt-2">智能拆解任务，让复杂变简单</p>
+          <p className="text-gray-500 dark:text-gray-400 mt-2">智能拆解任务，让复杂变简单</p>
         </div>
 
         {/* 输入区域 */}
-        <div className="bg-white rounded-2xl shadow-xl p-6 mb-8">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 mb-8">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="relative">
               <input
@@ -319,7 +335,7 @@ export default function Home() {
                     ? '输入一个宽泛任务，如"准备下周的产品发布"...'
                     : '添加一个新任务...'
                 }
-                className="w-full px-5 py-4 text-lg text-gray-800 border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:outline-none transition-colors"
+                className="w-full px-5 py-4 text-lg text-gray-800 dark:text-gray-100 dark:bg-gray-700 border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-indigo-500 focus:outline-none transition-colors"
                 disabled={isAiLoading}
               />
             </div>
@@ -331,7 +347,7 @@ export default function Home() {
                 onClick={() => setIsAiMode(!isAiMode)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${isAiMode
                   ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
                   }`}
               >
                 <svg
@@ -401,9 +417,9 @@ export default function Home() {
               <p className="text-gray-500 mt-4">加载中...</p>
             </div>
           ) : mainTodos.length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-2xl shadow-lg">
+            <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-2xl shadow-lg">
               <div className="text-6xl mb-4">📝</div>
-              <p className="text-gray-500">还没有任务，开始添加吧！</p>
+              <p className="text-gray-500 dark:text-gray-400">还没有任务，开始添加吧！</p>
             </div>
           ) : (
             mainTodos.map((todo) => {
@@ -413,7 +429,7 @@ export default function Home() {
               return (
                 <div
                   key={todo.id}
-                  className="bg-white rounded-2xl shadow-lg overflow-hidden"
+                  className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg overflow-hidden"
                 >
                   {/* 主任务 */}
                   <div className="p-5 flex items-center gap-4">
@@ -475,9 +491,9 @@ export default function Home() {
                       ) : (
                         <p
                           onDoubleClick={() => startEdit(todo.id, todo.title)}
-                          className={`text-lg cursor-pointer hover:bg-gray-50 px-2 py-1 -mx-2 rounded transition-colors ${todo.status === 'completed'
+                          className={`text-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 px-2 py-1 -mx-2 rounded transition-colors ${todo.status === 'completed'
                             ? 'text-gray-400 line-through'
-                            : 'text-gray-800'
+                            : 'text-gray-800 dark:text-gray-100'
                             }`}
                           title="双击编辑"
                         >
@@ -486,30 +502,42 @@ export default function Home() {
                       )}
                       {/* 优先级标签 */}
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <select
-                          value={todo.priority || 'medium'}
-                          onChange={(e) => updatePriority(todo.id, e.target.value as 'low' | 'medium' | 'high')}
-                          className={`text-xs px-2 py-1 rounded-full border cursor-pointer ${priorityConfig[todo.priority || 'medium'].color}`}
-                        >
-                          <option value="high">高优先级</option>
-                          <option value="medium">中优先级</option>
-                          <option value="low">低优先级</option>
-                        </select>
-                        {/* 截止日期 */}
-                        <input
-                          type="date"
-                          value={todo.due_date || ''}
-                          onChange={(e) => updateDueDate(todo.id, e.target.value || null)}
-                          className="text-xs px-2 py-1 border border-gray-200 rounded cursor-pointer hover:border-indigo-300"
-                        />
-                        {todo.due_date && (() => {
-                          const status = getDueDateStatus(todo.due_date)
-                          return status && (
-                            <span className={`text-xs px-2 py-0.5 rounded ${status.color}`}>
-                              {status.label}
-                            </span>
-                          )
-                        })()}
+                        {updatingIds.has(todo.id) ? (
+                          <div className="flex items-center gap-1 text-xs text-indigo-500">
+                            <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                            </svg>
+                            更新中...
+                          </div>
+                        ) : (
+                          <>
+                            <select
+                              value={todo.priority || 'medium'}
+                              onChange={(e) => updatePriority(todo.id, e.target.value as 'low' | 'medium' | 'high')}
+                              className={`text-xs px-2 py-1 rounded-full border cursor-pointer ${priorityConfig[todo.priority || 'medium'].color}`}
+                            >
+                              <option value="high">高优先级</option>
+                              <option value="medium">中优先级</option>
+                              <option value="low">低优先级</option>
+                            </select>
+                            {/* 截止日期 */}
+                            <input
+                              type="date"
+                              value={todo.due_date || ''}
+                              onChange={(e) => updateDueDate(todo.id, e.target.value || null)}
+                              className="text-xs px-2 py-1 border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded cursor-pointer hover:border-indigo-300"
+                            />
+                            {todo.due_date && (() => {
+                              const status = getDueDateStatus(todo.due_date)
+                              return status && (
+                                <span className={`text-xs px-2 py-0.5 rounded ${status.color}`}>
+                                  {status.label}
+                                </span>
+                              )
+                            })()}
+                          </>
+                        )}
                       </div>
                       {todo.description && (
                         <p className="text-sm text-gray-500 mt-1">{todo.description}</p>
@@ -557,7 +585,7 @@ export default function Home() {
 
                   {/* 子任务列表 */}
                   {subTasks.length > 0 && !collapsedIds.has(todo.id) && (
-                    <div className="border-t border-gray-100 bg-gray-50 px-5 py-3">
+                    <div className="border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 px-5 py-3">
                       <div className="space-y-2">
                         {subTasks.map((subTask) => (
                           <div
