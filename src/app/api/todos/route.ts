@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const supabase = createServerSupabaseClient()
   const body = await request.json()
-  const { title, description, parent_id } = body
+  const { title, description, parent_id, priority } = body
 
   // 获取当前用户
   const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -50,6 +50,7 @@ export async function POST(request: NextRequest) {
       title,
       description,
       parent_id,
+      priority: priority || 'medium',
       user_id: user.id,
     })
     .select()

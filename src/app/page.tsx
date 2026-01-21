@@ -26,6 +26,13 @@ export default function Home() {
   // 折叠状态
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set())
 
+  // 优先级配置
+  const priorityConfig = {
+    high: { label: '高', color: 'bg-red-100 text-red-700 border-red-200' },
+    medium: { label: '中', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
+    low: { label: '低', color: 'bg-green-100 text-green-700 border-green-200' },
+  }
+
   // 检查登录状态
   useEffect(() => {
     const checkUser = async () => {
@@ -171,6 +178,20 @@ export default function Home() {
       fetchTodos(dateFilter)
     } catch (error) {
       console.error('更新任务失败:', error)
+    }
+  }
+
+  // 更新任务优先级
+  const updatePriority = async (id: string, priority: 'low' | 'medium' | 'high') => {
+    try {
+      await fetch(`/api/todos/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priority }),
+      })
+      fetchTodos(dateFilter)
+    } catch (error) {
+      console.error('更新优先级失败:', error)
     }
   }
 
@@ -435,6 +456,18 @@ export default function Home() {
                           {todo.title}
                         </p>
                       )}
+                      {/* 优先级标签 */}
+                      <div className="flex items-center gap-2 mt-1">
+                        <select
+                          value={todo.priority || 'medium'}
+                          onChange={(e) => updatePriority(todo.id, e.target.value as 'low' | 'medium' | 'high')}
+                          className={`text-xs px-2 py-1 rounded-full border cursor-pointer ${priorityConfig[todo.priority || 'medium'].color}`}
+                        >
+                          <option value="high">高优先级</option>
+                          <option value="medium">中优先级</option>
+                          <option value="low">低优先级</option>
+                        </select>
+                      </div>
                       {todo.description && (
                         <p className="text-sm text-gray-500 mt-1">{todo.description}</p>
                       )}
