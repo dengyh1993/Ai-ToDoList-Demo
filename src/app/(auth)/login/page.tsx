@@ -1,6 +1,5 @@
 // src/app/(auth)/login/page.tsx
-import Link from 'next/link'
-import AuthForm from '@/app/components/AuthForm'
+import AuthForm from '@/app/components/AuthForm';
 
 export default function LoginPage() {
   return (
@@ -14,14 +13,7 @@ export default function LoginPage() {
         </div>
 
         <AuthForm mode="login" />
-
-        <p className="text-center text-gray-500 mt-6">
-          还没有账号？{' '}
-          <Link href="/signup" className="text-indigo-600 hover:underline">
-            立即注册
-          </Link>
-        </p>
       </div>
     </main>
-  )
+  );
 }
