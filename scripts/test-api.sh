@@ -317,6 +317,55 @@ fi
 echo ""
 
 # ==========================================
+# 测试 13.1: AI 提示词优化 (POST /api/ai/prompt-enhance)
+# ==========================================
+echo "=========================================="
+echo "测试 13.1: AI 提示词优化 (POST /api/ai/prompt-enhance)"
+echo "=========================================="
+
+echo -e "${YELLOW}[请求] AI 优化提示词: 写一个 Python 脚本读取 CSV${NC}"
+echo -e "${YELLOW}(此测试需要配置有效的 API Key)${NC}"
+
+RESPONSE=$(curl -s -X POST "$BASE_URL/ai/prompt-enhance" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "写一个 Python 脚本读取 CSV 文件并统计数据"}' \
+  --max-time 60)
+
+echo "响应: $RESPONSE"
+
+if echo "$RESPONSE" | grep -q '"enhanced"'; then
+    echo -e "${GREEN}[成功] 提示词优化成功${NC}"
+    # 显示优化后的内容摘要
+    ENHANCED=$(echo "$RESPONSE" | grep -o '"enhanced":"[^"]*"' | head -c 200)
+    echo -e "${YELLOW}优化结果预览: $ENHANCED...${NC}"
+elif echo "$RESPONSE" | grep -q "error"; then
+    echo -e "${YELLOW}[提示] AI 服务可能未配置或不可用${NC}"
+else
+    echo -e "${RED}[失败] 提示词优化失败${NC}"
+fi
+echo ""
+
+# ==========================================
+# 测试 13.2: 错误处理 - AI 优化空提示词
+# ==========================================
+echo "=========================================="
+echo "测试 13.2: 错误处理 - AI 优化空提示词"
+echo "=========================================="
+
+echo -e "${YELLOW}[请求] 尝试优化空提示词...${NC}"
+RESPONSE=$(curl -s -X POST "$BASE_URL/ai/prompt-enhance" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": ""}')
+echo "响应: $RESPONSE"
+
+if echo "$RESPONSE" | grep -q "提示词不能为空\|error"; then
+    echo -e "${GREEN}[成功] 正确返回错误信息${NC}"
+else
+    echo -e "${RED}[失败] 未能正确处理空提示词${NC}"
+fi
+echo ""
+
+# ==========================================
 # 测试 14: 功能测试 - 更新任务优先级/多字段
 # ==========================================
 echo "=========================================="
@@ -499,12 +548,13 @@ echo "              测试完成"
 echo "=========================================="
 echo ""
 echo "API 端点测试覆盖:"
-echo "  ✓ GET    /api/todos          - 获取所有任务"
-echo "  ✓ POST   /api/todos          - 创建任务"
-echo "  ✓ GET    /api/todos/:id      - 获取单个任务"
-echo "  ✓ PATCH  /api/todos/:id      - 更新任务"
-echo "  ✓ DELETE /api/todos/:id      - 删除任务"
-echo "  ✓ POST   /api/ai/decompose   - AI 拆解任务"
+echo "  ✓ GET    /api/todos              - 获取所有任务"
+echo "  ✓ POST   /api/todos              - 创建任务"
+echo "  ✓ GET    /api/todos/:id          - 获取单个任务"
+echo "  ✓ PATCH  /api/todos/:id          - 更新任务"
+echo "  ✓ DELETE /api/todos/:id          - 删除任务"
+echo "  ✓ POST   /api/ai/decompose       - AI 拆解任务"
+echo "  ✓ POST   /api/ai/prompt-enhance  - AI 提示词优化"
 echo ""
 echo "测试场景覆盖:"
 echo "  ✓ 基础 CRUD 操作"
