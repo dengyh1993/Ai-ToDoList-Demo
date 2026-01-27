@@ -24,11 +24,51 @@ export default function Home() {
     customRange?: DateRange;
   }>({ type: 'all' });
   // Tab 切换状态
-  const [activeTab, setActiveTab] = useState<'todo' | 'prompt'>('todo');
+  const [activeTab, setActiveTab] = useState<'todo' | 'prompt' | 'chat'>('todo');
   // 提示词优化状态
   const [userPrompt, setUserPrompt] = useState('');
   const [enhancedPrompt, setEnhancedPrompt] = useState('');
   const [isEnhancing, setIsEnhancing] = useState(false);
+  // 聊天状态
+  const [chatMessages, setChatMessages] = useState<
+    Array<{ role: 'user' | 'assistant'; content: string }>
+  >([]);
+  const [chatInput, setChatInput] = useState('');
+  const [isChatting, setIsChatting] = useState(false);
+  const [currentAssistantMessage, setCurrentAssistantMessage] = useState('');
+  const [chatCost, setChatCost] = useState<string | null>(null);
+  const [chatError, setChatError] = useState<string | null>(null);
+
+  // 从 localStorage 加载/保存聊天历史
+  const getChatStorageKey = (userId: string) => `chat_history_${userId}`;
+
+  useEffect(() => {
+    if (user) {
+      const key = getChatStorageKey(user.id);
+      try {
+        const saved = localStorage.getItem(key);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            setChatMessages(parsed);
+          }
+        }
+      } catch (e) {
+        console.error('加载聊天历史失败:', e);
+      }
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (user && chatMessages.length > 0) {
+      const key = getChatStorageKey(user.id);
+      try {
+        localStorage.setItem(key, JSON.stringify(chatMessages));
+      } catch (e) {
+        console.error('保存聊天历史失败:', e);
+      }
+    }
+  }, [user, chatMessages]);
   // 编辑状态
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
@@ -390,6 +430,99 @@ export default function Home() {
     }
   };
 
+  // 发送聊天消息
+  const sendChatMessage = async () => {
+    if (!chatInput.trim() || isChatting) return;
+
+    const userMessage = chatInput.trim();
+    setChatInput('');
+    setIsChatting(true);
+    setCurrentAssistantMessage('');
+    setChatCost(null);
+    setChatError(null);
+
+    // 添加用户消息
+    const newMessages = [
+      ...chatMessages,
+      { role: 'user' as const, content: userMessage },
+    ];
+    setChatMessages(newMessages);
+
+    try {
+      const res = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: newMessages }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || '聊天失败');
+        setIsChatting(false);
+        return;
+      }
+
+      // 处理流式响应
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) {
+        alert('无法读取响应流');
+        setIsChatting(false);
+        return;
+      }
+
+      let accumulatedText = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+          break;
+        }
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') {
+              break;
+            }
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.type === 'cost') {
+                setChatCost(parsed.formatted);
+              } else if (parsed.type === 'error') {
+                setChatError(parsed.message || 'AI 服务暂时不可用');
+                setIsChatting(false);
+                setCurrentAssistantMessage('');
+              } else if (parsed.content) {
+                accumulatedText += parsed.content;
+                setCurrentAssistantMessage(accumulatedText);
+              }
+            } catch {
+              // 忽略解析错误
+            }
+          }
+        }
+      }
+
+      // 完成后添加助手消息到历史记录
+      setChatMessages((prev) => [
+        ...prev,
+        { role: 'assistant' as const, content: accumulatedText },
+      ]);
+      setCurrentAssistantMessage('');
+      setIsChatting(false);
+    } catch (error) {
+      console.error('聊天失败:', error);
+      setChatError('网络错误，请稍后重试');
+      setIsChatting(false);
+    }
+  };
+
   // 如果还在检查登录状态，显示加载
   if (!user) {
     return (
@@ -420,23 +553,30 @@ export default function Home() {
           <div className="flex items-center justify-center gap-2 mt-6">
             <button
               onClick={() => setActiveTab('todo')}
-              className={`px-6 py-2 rounded-lg font-medium transition-all ${
-                activeTab === 'todo'
+              className={`px-6 py-2 rounded-lg font-medium transition-all ${activeTab === 'todo'
                   ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-lg'
                   : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-              }`}
+                }`}
             >
               待办事项
             </button>
             <button
               onClick={() => setActiveTab('prompt')}
-              className={`px-6 py-2 rounded-lg font-medium transition-all ${
-                activeTab === 'prompt'
+              className={`px-6 py-2 rounded-lg font-medium transition-all ${activeTab === 'prompt'
                   ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-lg'
                   : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-              }`}
+                }`}
             >
               提示词生成
+            </button>
+            <button
+              onClick={() => setActiveTab('chat')}
+              className={`px-6 py-2 rounded-lg font-medium transition-all ${activeTab === 'chat'
+                  ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-lg'
+                  : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                }`}
+            >
+              流式AI
             </button>
           </div>
         </div>
@@ -467,11 +607,10 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={() => setIsAiMode(!isAiMode)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-                      isAiMode
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${isAiMode
                         ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white'
                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
-                    }`}
+                      }`}
                   >
                     <svg
                       className="w-5 h-5"
@@ -566,11 +705,10 @@ export default function Home() {
                         <button
                           onClick={() => toggleComplete(todo.id, todo.status)}
                           disabled={togglingIds.has(todo.id)}
-                          className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all ${
-                            todo.status === 'completed'
+                          className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all ${todo.status === 'completed'
                               ? 'bg-green-500 border-green-500 text-white'
                               : 'border-gray-300 hover:border-indigo-500'
-                          } ${togglingIds.has(todo.id) ? 'opacity-50' : ''}`}
+                            } ${togglingIds.has(todo.id) ? 'opacity-50' : ''}`}
                         >
                           {togglingIds.has(todo.id) ? (
                             <svg
@@ -667,11 +805,10 @@ export default function Home() {
                               onDoubleClick={() =>
                                 startEdit(todo.id, todo.title)
                               }
-                              className={`text-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 px-2 py-1 -mx-2 rounded transition-colors ${
-                                todo.status === 'completed'
+                              className={`text-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 px-2 py-1 -mx-2 rounded transition-colors ${todo.status === 'completed'
                                   ? 'text-gray-400 line-through'
                                   : 'text-gray-800 dark:text-gray-100'
-                              }`}
+                                }`}
                               title="双击编辑"
                             >
                               {todo.title}
@@ -710,9 +847,9 @@ export default function Home() {
                                     updatePriority(
                                       todo.id,
                                       e.target.value as
-                                        | 'low'
-                                        | 'medium'
-                                        | 'high',
+                                      | 'low'
+                                      | 'medium'
+                                      | 'high',
                                     )
                                   }
                                   className={`text-xs px-2 py-1 rounded-full border cursor-pointer ${priorityConfig[todo.priority || 'medium'].color}`}
@@ -837,11 +974,10 @@ export default function Home() {
                                     toggleComplete(subTask.id, subTask.status)
                                   }
                                   disabled={togglingIds.has(subTask.id)}
-                                  className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
-                                    subTask.status === 'completed'
+                                  className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${subTask.status === 'completed'
                                       ? 'bg-green-500 border-green-500 text-white'
                                       : 'border-gray-300 hover:border-indigo-500'
-                                  } ${togglingIds.has(subTask.id) ? 'opacity-50' : ''}`}
+                                    } ${togglingIds.has(subTask.id) ? 'opacity-50' : ''}`}
                                 >
                                   {togglingIds.has(subTask.id) ? (
                                     <svg
@@ -936,11 +1072,10 @@ export default function Home() {
                                     onDoubleClick={() =>
                                       startEdit(subTask.id, subTask.title)
                                     }
-                                    className={`flex-1 cursor-pointer hover:bg-gray-100 px-2 py-1 -mx-2 rounded transition-colors ${
-                                      subTask.status === 'completed'
+                                    className={`flex-1 cursor-pointer hover:bg-gray-100 px-2 py-1 -mx-2 rounded transition-colors ${subTask.status === 'completed'
                                         ? 'text-gray-400 line-through'
                                         : 'text-gray-600'
-                                    }`}
+                                      }`}
                                     title="双击编辑"
                                   >
                                     {subTask.title}
@@ -998,6 +1133,183 @@ export default function Home() {
               )}
             </div>
           </>
+        )}
+
+        {/* 流式 AI 聊天 Tab */}
+        {activeTab === 'chat' && (
+          <div className="space-y-6">
+            {/* 聊天消息列表 */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 min-h-[400px] max-h-[600px] overflow-y-auto">
+              {chatMessages.length === 0 && !isChatting && (
+                <div className="flex items-center justify-center h-full text-gray-400">
+                  <div className="text-center">
+                    <div className="text-6xl mb-4">💬</div>
+                    <p>开始与 AI 对话吧</p>
+                  </div>
+                </div>
+              )}
+
+              {chatMessages.map((message, index) => (
+                <div
+                  key={index}
+                  className={`mb-4 ${message.role === 'user' ? 'flex justify-end' : 'flex justify-start'
+                    }`}
+                >
+                  <div
+                    className={`max-w-[80%] rounded-2xl px-4 py-3 ${message.role === 'user'
+                        ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100'
+                      }`}
+                  >
+                    {message.role === 'user' && (
+                      <div className="text-xs opacity-70 mb-1">你</div>
+                    )}
+                    {message.role === 'assistant' && (
+                      <div className="text-xs text-indigo-500 mb-1">AI</div>
+                    )}
+                    <div className="whitespace-pre-wrap break-words">
+                      {message.content}
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {/* 当前正在生成的消息 */}
+              {isChatting && !currentAssistantMessage && (
+                <div className="mb-4 flex justify-start">
+                  <div className="max-w-[80%] rounded-2xl px-4 py-3 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                    <div className="text-xs text-indigo-500 mb-1">AI</div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {isChatting && currentAssistantMessage && (
+                <div className="mb-4 flex justify-start">
+                  <div className="max-w-[80%] rounded-2xl px-4 py-3 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                    <div className="text-xs text-indigo-500 mb-1">AI</div>
+                    <div className="whitespace-pre-wrap break-words">
+                      {currentAssistantMessage}
+                      <span className="animate-pulse">|</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 成本信息 */}
+              {chatCost && (
+                <div className="text-xs text-gray-500 dark:text-gray-400 text-center mt-2 bg-gray-50 dark:bg-gray-900 rounded-lg py-2">
+                  {chatCost}
+                </div>
+              )}
+
+              {/* 错误信息 */}
+              {chatError && (
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-6 text-center">
+                  <div className="text-5xl mb-3">⚠️</div>
+                  <p className="text-gray-700 dark:text-gray-300 mb-4">{chatError}</p>
+                  <button
+                    onClick={() => {
+                      setChatError(null);
+                      // 重新发送最后一条用户消息
+                      if (chatMessages.length > 0) {
+                        const lastMessage = chatMessages[chatMessages.length - 1];
+                        if (lastMessage?.role === 'user') {
+                          setChatInput(lastMessage.content);
+                        }
+                      }
+                    }}
+                    className="px-6 py-2 bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-medium rounded-xl hover:from-indigo-600 hover:to-purple-600 transition-all flex items-center gap-2"
+                  >
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 4v4M3 8h8m0 0l-4 4M3 12H4z"
+                      />
+                    </svg>
+                    重试
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* 输入区域 */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6">
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      sendChatMessage();
+                    }
+                  }}
+                  placeholder="输入你的问题..."
+                  className="flex-1 px-5 py-4 text-lg text-gray-800 dark:text-gray-100 dark:bg-gray-700 border-2 border-gray-200 dark:border-gray-600 rounded-xl focus:border-indigo-500 focus:outline-none transition-colors"
+                  disabled={isChatting}
+                />
+                <button
+                  onClick={sendChatMessage}
+                  disabled={!chatInput.trim() || isChatting}
+                  className="px-8 py-4 bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-medium rounded-xl hover:from-indigo-600 hover:to-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+                >
+                  {isChatting ? (
+                    <>
+                      <svg
+                        className="animate-spin h-5 w-5"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                          fill="none"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        />
+                      </svg>
+                    </>
+                  ) : (
+                    <>
+                      <svg
+                        className="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                        />
+                      </svg>
+                      发送
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* 提示词生成 Tab */}

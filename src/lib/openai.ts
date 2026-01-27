@@ -3,6 +3,9 @@ import OpenAI from 'openai';
 // 使用 DeepSeek API - 延迟初始化，避免构建时需要 API key
 let openai: OpenAI | null = null;
 
+// 使用 BigModel API - 延迟初始化，避免构建时需要 API key
+let bigModelClient: OpenAI | null = null;
+
 export function getOpenAIClient(): OpenAI {
   if (!openai) {
     const apiKey = process.env.DEEPSEEK_API_KEY;
@@ -15,6 +18,22 @@ export function getOpenAIClient(): OpenAI {
     });
   }
   return openai;
+}
+
+export function getBigModelClient(): OpenAI {
+  if (!bigModelClient) {
+    const apiKey = process.env.BIGMODEL_API_KEY;
+    if (!apiKey) {
+      throw new Error('Missing BIGMODEL_API_KEY environment variable');
+    }
+    bigModelClient = new OpenAI({
+      apiKey,
+      baseURL: 'https://open.bigmodel.cn/api/paas/v4',
+      timeout: 120000, // 120s
+      maxRetries: 0, // 禁用内置重试，使用 p-retry
+    });
+  }
+  return bigModelClient;
 }
 
 export async function decomposeTask(task: string): Promise<string[]> {
@@ -42,8 +61,10 @@ export async function decomposeTask(task: string): Promise<string[]> {
           content: task,
         },
       ],
-      temperature: 0.7,
-      max_tokens: 500,
+      temperature: 0.7, // 控制输出的随机性
+      max_tokens: 65535, // 最大 token 数
+      top_p: 0.9, // 控制输出的随机性
+      seed: 42, // 控制输出的随机性
     });
 
     console.log('[OpenAI] API 调用成功');
